@@ -196,6 +196,56 @@ def health_check():
         "classes_available": len(class_mapping['label_to_idx']) if class_mapping else 27
     }
 
+@app.get("/debug-files")
+def debug_files():
+    """Check if model files exist in deployment"""
+    import os
+    
+    files_to_check = [
+        'models/proper_medical_model.pth',
+        'models/proper_class_mapping.json', 
+        'models/real_pet_disease_model.pth',
+        'models/real_class_mapping.json',
+        'models/pet_disease_model.pth',
+        'models/class_mapping.json'
+    ]
+    
+    existing_files = {}
+    for file_path in files_to_check:
+        exists = os.path.exists(file_path)
+        existing_files[file_path] = exists
+        if exists:
+            try:
+                size = os.path.getsize(file_path)
+                existing_files[f"{file_path}_size"] = f"{size} bytes"
+            except:
+                existing_files[f"{file_path}_size"] = "unknown"
+    
+    # Check current directory structure
+    current_dir_files = []
+    models_dir_files = []
+    
+    try:
+        current_dir_files = os.listdir('.')
+    except:
+        current_dir_files = "Cannot list current directory"
+    
+    try:
+        if os.path.exists('models'):
+            models_dir_files = os.listdir('models')
+        else:
+            models_dir_files = "models folder does not exist"
+    except:
+        models_dir_files = "Cannot list models directory"
+    
+    return {
+        "current_working_dir": os.getcwd(),
+        "files_in_current_dir": current_dir_files,
+        "files_in_models_dir": models_dir_files,
+        "file_existence": existing_files,
+        "app_running_in_demo_mode": model is None
+    }
+
 @app.get("/classes")
 def get_classes():
     if class_mapping:
