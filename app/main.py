@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
@@ -9,6 +10,7 @@ import io
 import json
 import os
 import random
+import socket
 
 app = FastAPI(title="Pet Disease Classifier API", version="1.0.0")
 
@@ -169,13 +171,73 @@ async def startup_event():
     print("🚀 Starting Pet Disease Classifier API...")
     load_model()
 
-@app.get("/")
-def root():
-    return {
-        "message": "Pet Disease Classifier API", 
-        "status": "running",
-        "model_loaded": model is not None
-    }
+@app.get("/", response_class=HTMLResponse)
+def root(request: Request):
+    """HTML page with clickable links to all endpoints"""
+    base_url = str(request.base_url).rstrip('/')
+    
+    html_content = f"""
+    <html>
+        <head>
+            <title>Pet Disease Classifier API</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                .container {{ max-width: 800px; margin: 0 auto; }}
+                .endpoint {{ background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; }}
+                a {{ color: #007bff; text-decoration: none; }}
+                a:hover {{ text-decoration: underline; }}
+                .demo {{ background: #fff3cd; padding: 10px; border-radius: 5px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🐾 Pet Disease Classifier API</h1>
+                <p>Status: <strong>Running</strong> | Model: <strong>{'Loaded' if model is not None else 'Demo Mode'}</strong></p>
+                
+                <div class="demo">
+                    <h3>🚨 IMPORTANT: Your App is Running!</h3>
+                    <p>Your Railway URL is: <strong>{base_url}</strong></p>
+                    <p>Bookmark this page! Share these links:</p>
+                </div>
+                
+                <h2>📋 Available Endpoints:</h2>
+                
+                <div class="endpoint">
+                    <h3><a href="{base_url}/health" target="_blank">Health Check</a></h3>
+                    <p>Check API status and model info</p>
+                    <code>GET {base_url}/health</code>
+                </div>
+                
+                <div class="endpoint">
+                    <h3><a href="{base_url}/debug-files" target="_blank">Debug Files</a></h3>
+                    <p>Check what model files exist in deployment</p>
+                    <code>GET {base_url}/debug-files</code>
+                </div>
+                
+                <div class="endpoint">
+                    <h3><a href="{base_url}/classes" target="_blank">Get Classes</a></h3>
+                    <p>See all available disease classes</p>
+                    <code>GET {base_url}/classes</code>
+                </div>
+                
+                <div class="endpoint">
+                    <h3>Predict Endpoint</h3>
+                    <p>Upload an image for disease prediction (use Postman or curl)</p>
+                    <code>POST {base_url}/predict</code>
+                </div>
+                
+                <h2>🔧 Quick Test:</h2>
+                <p>Copy and test these URLs:</p>
+                <ul>
+                    <li><a href="{base_url}/health" target="_blank">{base_url}/health</a></li>
+                    <li><a href="{base_url}/debug-files" target="_blank">{base_url}/debug-files</a></li>
+                    <li><a href="{base_url}/classes" target="_blank">{base_url}/classes</a></li>
+                </ul>
+            </div>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 @app.get("/health")
 def health_check():
