@@ -10,7 +10,7 @@ import io
 import json
 import os
 import random
-import socket
+import requests
 
 app = FastAPI(title="Pet Disease Classifier API", version="1.0.0")
 
@@ -36,27 +36,55 @@ transform = transforms.Compose([
                         std=[0.229, 0.224, 0.225])
 ])
 
+def download_model_files():
+    """Download model files from Google Drive if they don't exist"""
+    os.makedirs('model', exist_ok=True)
+    
+    # Your Google Drive direct download links
+    model_files = {
+        'model/proper_medical_model.pth': 'https://drive.google.com/uc?export=download&id=1UZRn58UHXKFZ38661xNDW1WU-QrHWa3b',
+        'model/proper_class_mapping.json': 'https://drive.google.com/uc?export=download&id=1PtWQq2Wk8IanKil6hsD_7RCG8IFnDcIe',
+        'model/real_pet_disease_model.pth': 'https://drive.google.com/uc?export=download&id=1p2_wSpeNoftlByCLDcxdfk3nOG8rw9pN',
+        'model/real_class_mapping.json': 'https://drive.google.com/uc?export=download&id=1dw46v0t6sIbjVMAkCzuBIGDQL-KiWq-G'
+    }
+    
+    for file_path, url in model_files.items():
+        if not os.path.exists(file_path):
+            print(f"📥 Downloading {file_path}...")
+            try:
+                response = requests.get(url)
+                if response.status_code == 200:
+                    with open(file_path, 'wb') as f:
+                        f.write(response.content)
+                    print(f"✅ Downloaded {file_path} ({len(response.content)} bytes)")
+                else:
+                    print(f"❌ Failed to download {file_path}: HTTP {response.status_code}")
+            except Exception as e:
+                print(f"❌ Error downloading {file_path}: {e}")
+        else:
+            print(f"✅ {file_path} already exists")
+
 def load_model():
     """Load the trained model"""
     global model, class_mapping
     
     try:
         # Try to load the PROPER medical model first
-        model_path = 'models/proper_medical_model.pth'
-        class_mapping_path = 'models/proper_class_mapping.json'
+        model_path = 'model/proper_medical_model.pth'
+        class_mapping_path = 'model/proper_class_mapping.json'
         
         # If proper model doesn't exist, fall back to real model
         if not os.path.exists(model_path):
-            model_path = 'models/real_pet_disease_model.pth'
-            class_mapping_path = 'models/real_class_mapping.json'
+            model_path = 'model/real_pet_disease_model.pth'
+            class_mapping_path = 'model/real_class_mapping.json'
             print("⚠️  Proper medical model not found, using real model")
         else:
             print("✅ Proper medical model found, loading...")
         
         # If real model doesn't exist, fall back to demo model
         if not os.path.exists(model_path):
-            model_path = 'models/pet_disease_model.pth'
-            class_mapping_path = 'models/class_mapping.json'
+            model_path = 'model/pet_disease_model.pth'
+            class_mapping_path = 'model/class_mapping.json'
             print("⚠️  Real model not found, using demo model")
         
         # Check if model files exist
@@ -169,7 +197,8 @@ def get_demo_prediction(filename):
 async def startup_event():
     """Load model when API starts"""
     print("🚀 Starting Pet Disease Classifier API...")
-    load_model()
+    download_model_files()  # Download models first
+    load_model()  # Then load them
 
 @app.get("/", response_class=HTMLResponse)
 def root(request: Request):
@@ -264,12 +293,12 @@ def debug_files():
     import os
     
     files_to_check = [
-        'models/proper_medical_model.pth',
-        'models/proper_class_mapping.json', 
-        'models/real_pet_disease_model.pth',
-        'models/real_class_mapping.json',
-        'models/pet_disease_model.pth',
-        'models/class_mapping.json'
+        'model/proper_medical_model.pth',
+        'model/proper_class_mapping.json', 
+        'model/real_pet_disease_model.pth',
+        'model/real_class_mapping.json',
+        'model/pet_disease_model.pth',
+        'model/class_mapping.json'
     ]
     
     existing_files = {}
@@ -293,17 +322,17 @@ def debug_files():
         current_dir_files = "Cannot list current directory"
     
     try:
-        if os.path.exists('models'):
-            models_dir_files = os.listdir('models')
+        if os.path.exists('model'):
+            models_dir_files = os.listdir('model')
         else:
-            models_dir_files = "models folder does not exist"
+            models_dir_files = "model folder does not exist"
     except:
-        models_dir_files = "Cannot list models directory"
+        models_dir_files = "Cannot list model directory"
     
     return {
         "current_working_dir": os.getcwd(),
         "files_in_current_dir": current_dir_files,
-        "files_in_models_dir": models_dir_files,
+        "files_in_model_dir": models_dir_files,
         "file_existence": existing_files,
         "app_running_in_demo_mode": model is None
     }
