@@ -37,6 +37,7 @@ transform = transforms.Compose([
 
 def download_model_files():
     """Download model files from Google Drive if they don't exist"""
+    print("🔄 Starting model file download...")
     os.makedirs('model', exist_ok=True)
     
     # Your Google Drive direct download links
@@ -48,74 +49,124 @@ def download_model_files():
     }
     
     for file_path, url in model_files.items():
+        print(f"📥 Checking {file_path}...")
         if not os.path.exists(file_path):
-            print(f"📥 Downloading {file_path}...")
+            print(f"   Downloading from {url}...")
             try:
                 response = requests.get(url)
                 if response.status_code == 200:
                     with open(file_path, 'wb') as f:
                         f.write(response.content)
-                    print(f"✅ Downloaded {file_path} ({len(response.content)} bytes)")
+                    file_size = os.path.getsize(file_path)
+                    print(f"   ✅ Downloaded {file_path} ({file_size} bytes)")
                 else:
-                    print(f"❌ Failed to download {file_path}: HTTP {response.status_code}")
+                    print(f"   ❌ Failed to download {file_path}: HTTP {response.status_code}")
             except Exception as e:
-                print(f"❌ Error downloading {file_path}: {e}")
+                print(f"   ❌ Error downloading {file_path}: {e}")
         else:
-            print(f"✅ {file_path} already exists")
+            file_size = os.path.getsize(file_path)
+            print(f"   ✅ {file_path} already exists ({file_size} bytes)")
+    
+    # List all files in model directory
+    print("📁 Files in model directory:")
+    for file in os.listdir('model'):
+        file_path = os.path.join('model', file)
+        size = os.path.getsize(file_path)
+        print(f"   - {file}: {size} bytes")
 
 def load_model():
     """Load the trained model"""
     global model, class_mapping
     
+    print("🔄 Starting model loading process...")
+    
     try:
-        # Try to load the PROPER medical model first
-        model_path = 'model/proper_medical_model.pth'
-        class_mapping_path = 'model/proper_class_mapping.json'
+        # Try different model paths in order
+        model_paths = [
+            'model/proper_medical_model.pth',
+            'model/real_pet_disease_model.pth', 
+            'model/pet_disease_model.pth'
+        ]
         
-        # If proper model doesn't exist, fall back to real model
-        if not os.path.exists(model_path):
-            model_path = 'model/real_pet_disease_model.pth'
-            class_mapping_path = 'model/real_class_mapping.json'
-            print("⚠️  Proper medical model not found, using real model")
-        else:
-            print("✅ Proper medical model found, loading...")
+        class_mapping_paths = [
+            'model/proper_class_mapping.json',
+            'model/real_class_mapping.json',
+            'model/class_mapping.json'
+        ]
         
-        # If real model doesn't exist, fall back to demo model
-        if not os.path.exists(model_path):
-            model_path = 'model/pet_disease_model.pth'
-            class_mapping_path = 'model/class_mapping.json'
-            print("⚠️  Real model not found, using demo model")
+        model_path = None
+        class_mapping_path = None
+        
+        # Find the first model that exists
+        for i, path in enumerate(model_paths):
+            if os.path.exists(path):
+                model_path = path
+                class_mapping_path = class_mapping_paths[i]
+                print(f"✅ Found model: {model_path}")
+                print(f"✅ Found class mapping: {class_mapping_path}")
+                break
+        
+        if not model_path:
+            print("❌ No model file found at any path!")
+            print("📁 Current directory contents:")
+            for item in os.listdir('.'):
+                print(f"   - {item}")
+            print("📁 Model directory contents:")
+            if os.path.exists('model'):
+                for item in os.listdir('model'):
+                    print(f"   - {item}")
+            else:
+                print("   Model directory doesn't exist!")
+            return False
         
         # Check if model files exist
         if not os.path.exists(model_path):
-            print("❌ No model file found. Running in demo mode.")
+            print(f"❌ Model file not found: {model_path}")
             return False
         
         # Load class mapping
+        print("📖 Loading class mapping...")
+        if not os.path.exists(class_mapping_path):
+            print(f"❌ Class mapping file not found: {class_mapping_path}")
+            return False
+            
         with open(class_mapping_path, 'r') as f:
             class_mapping = json.load(f)
         
         # Get number of classes
         num_classes = len(class_mapping['idx_to_label'])
+        print(f"📊 Number of classes: {num_classes}")
+        print(f"🏥 Classes: {list(class_mapping['label_to_idx'].keys())}")
         
         # Create model - Use EfficientNet for proper medical model
+        print("🔨 Creating model architecture...")
         if 'proper' in model_path:
-            model = models.efficientnet_b0(pretrained=True)  # ✅ FIXED: pretrained=True
+            model = models.efficientnet_b0(pretrained=True)
             model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
             print("🔬 Using EfficientNet (medical optimized)")
         else:
             # Fallback to ResNet18 for other models
-            model = models.resnet18(pretrained=True)  # ✅ FIXED: pretrained=True
+            model = models.resnet18(pretrained=True)
             model.fc = nn.Linear(model.fc.in_features, num_classes)
             print("🔧 Using ResNet18 (compatible)")
         
         # Load trained weights
+        print(f"📂 Loading model weights from: {model_path}")
+        print(f"📂 File size: {os.path.getsize(model_path)} bytes")
+        
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.to(device)
         model.eval()
         
+        # Test the model with a dummy input
+        print("🧪 Testing model with dummy input...")
+        dummy_input = torch.randn(1, 3, 224, 224).to(device)
+        with torch.no_grad():
+            dummy_output = model(dummy_input)
+        print(f"🧪 Model test - Output shape: {dummy_output.shape}")
+        print(f"🧪 Model test - Output range: {dummy_output.min().item():.3f} to {dummy_output.max().item():.3f}")
+        
         print("✅ Model loaded successfully!")
-        print(f"📊 Classes: {list(class_mapping['label_to_idx'].keys())}")
         
         # Determine which model is being used
         if 'proper' in model_path:
@@ -129,13 +180,16 @@ def load_model():
         return True
         
     except Exception as e:
-        print(f"❌ Error loading model: {e}")
+        print(f"❌ Error loading model: {str(e)}")
+        import traceback
+        print(f"❌ Detailed error: {traceback.format_exc()}")
         print("⚠️  Running in demo mode")
         return False
 
 def get_demo_prediction(filename):
     """Generate demo predictions when model isn't loaded"""
-    # Use the actual classes from your real dataset
+    print("🎭 Using demo mode for prediction")
+    # ... keep your existing demo function code ...
     classes = [
         'Dental Disease in Cat', 'Dental Disease in Dog', 'distemper', 
         'Distemper in Dog', 'Ear Mites in Cat', 'ear_infection', 
@@ -196,8 +250,11 @@ def get_demo_prediction(filename):
 async def startup_event():
     """Load model when API starts"""
     print("🚀 Starting Pet Disease Classifier API...")
-    download_model_files()  # Download models first
-    load_model()  # Then load them
+    print("📥 Downloading model files...")
+    download_model_files()
+    print("🔧 Loading model...")
+    load_model()
+    print("✅ Startup complete!")
 
 @app.get("/")
 def root():
@@ -223,25 +280,30 @@ def health_check():
         "model_loaded": model is not None,
         "model_type": model_type,
         "device": str(device),
-        "classes_available": len(class_mapping['label_to_idx']) if class_mapping else 27
+        "classes_available": len(class_mapping['label_to_idx']) if class_mapping else 0
     }
 
 @app.get("/model-info")
 def model_info():
     """Check model information"""
     if model is None:
-        return {"error": "No model loaded"}
+        return {
+            "error": "No model loaded",
+            "debug_info": {
+                "model_variable": str(model),
+                "class_mapping_variable": str(class_mapping)
+            }
+        }
     
     model_info = {
         "model_type": model.__class__.__name__,
         "model_architecture": "EfficientNet" if 'efficientnet' in str(model.__class__).lower() else "ResNet",
         "num_classes": len(class_mapping['idx_to_label']) if class_mapping else 0,
         "classes_loaded": list(class_mapping['label_to_idx'].keys()) if class_mapping else [],
-        "pretrained_used": True  # This should now be True
+        "pretrained_used": True
     }
     
     # Check model file info
-    import os
     model_files = {}
     for file in ['model/proper_medical_model.pth', 'model/proper_class_mapping.json']:
         if os.path.exists(file):
@@ -288,6 +350,7 @@ async def predict(file: UploadFile = File(...)):
     try:
         # If model is not loaded, use demo mode
         if model is None:
+            print("🎭 Using demo mode for prediction")
             predictions, primary_prediction = get_demo_prediction(file.filename)
             
             return {
@@ -296,7 +359,8 @@ async def predict(file: UploadFile = File(...)):
                 "primary_prediction": primary_prediction,
                 "file_name": file.filename,
                 "file_type": file.content_type,
-                "message": "Demo mode - using sample predictions"
+                "message": "Demo mode - using sample predictions",
+                "is_demo": True
             }
         
         # Read and process image
@@ -330,16 +394,20 @@ async def predict(file: UploadFile = File(...)):
         if predictions[0]['confidence'] < 70:
             message += " ⚠️ Low confidence - consult veterinarian"
         
+        print(f"🔍 Prediction result: {predictions[0]['class']} ({predictions[0]['confidence']}%)")
+        
         return {
             "success": True,
             "predictions": predictions,
             "primary_prediction": predictions[0],
             "file_name": file.filename,
             "file_type": file.content_type,
-            "message": message
+            "message": message,
+            "is_demo": False
         }
         
     except Exception as e:
+        print(f"❌ Prediction error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 @app.post("/predict-batch")
@@ -356,7 +424,8 @@ async def predict_batch(files: list[UploadFile] = File(...)):
             results.append({
                 "file_name": file.filename,
                 "success": True,
-                "prediction": result["primary_prediction"]
+                "prediction": result["primary_prediction"],
+                "is_demo": result.get("is_demo", False)
             })
         except Exception as e:
             results.append({
